@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 178dfee7c6e34b1459577775dfd93119, type: 3}
+  m_Name: UnitInfluenceMap
+  m_EditorClassIdentifier: Assembly-CSharp::AI.InfluenceMap.UnitInfluenceSubMap
+  updateFrame: 0
+  minInfluence: -50
+  maxInfluence: 50
+  defaultColor: {r: 1, g: 1, b: 1, a: 1}
+  maxInfluenceColor: {r: 0.08334541, g: 1, b: 0, a: 1}
+  minInfluenceColor: {r: 1, g: 0.15115502, b: 0, a: 1}
+  decayStartTime: 100
+  decayTime: 100
