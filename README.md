@@ -4,6 +4,21 @@
 
 A real-time strategy project in which two teams fight to destroy the opposing base. One of the two teams is entirely driven by an artificial intelligence structured into three decision-making layers.
 
+## Behaviour Example
+
+### Capture the lab / continuous production / assign a specific squad to a goal
+
+![Capture the lab](docs/images/Capture.gif)
+
+### Defend the lab / formation
+
+![Defend the lab](docs/images/Defend.gif)
+
+### Explore / destroy the enemy base
+
+![Destroy the enemy base](docs/images/DestroyBase.gif)
+
+
 ## Overall Architecture
 
 The AI relies on a strict separation between strategic decision-making (what to do), planning (in what order), and tactical execution (how each unit behaves on contact). Each layer runs at its own frequency and communicates with the next one.
