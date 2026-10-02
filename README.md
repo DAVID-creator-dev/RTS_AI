@@ -1,59 +1,61 @@
-# RTS AI — Documentation technique
+# RTS AI 
 
-Projet de stratégie temps réel dans lequel deux équipes s'affrontent pour détruire la base adverse. L'une des deux équipes est entièrement pilotée par une intelligence artificielle structurée en trois couches décisionnelles.
+## Overview
 
-## Architecture générale
+A real-time strategy project in which two teams fight to destroy the opposing base. One of the two teams is entirely driven by an artificial intelligence structured into three decision-making layers.
 
-L'IA repose sur une séparation stricte entre la décision stratégique (quoi faire), la planification (dans quel ordre), et l'exécution tactique (comment chaque unité se comporte au contact). Chaque couche opère à sa propre fréquence et communique avec la suivante.
+## Overall Architecture
+
+The AI relies on a strict separation between strategic decision-making (what to do), planning (in what order), and tactical execution (how each unit behaves on contact). Each layer runs at its own frequency and communicates with the next one.
 
 ```
- Utility System (stratégie)
- "quel objectif poursuivre ?"
+ Utility System (strategy)
+ "which goal should we pursue?"
         │
-        │  goal queue triée par priorité
+        │  goal queue sorted by priority
         ▼
- GOAP Planner (planification)
- "quelles actions enchaîner ?"
+ GOAP Planner (planning)
+ "which actions should we chain?"
         │
         │  plan = [Action, Action, ...]
         ▼
- FSM tactique (exécution)
- "comment chaque unité agit frame par frame"
+ Tactical FSM (execution)
+ "how each unit acts frame by frame"
 ```
 
-## Couche 1 — Utility System
+## Layer 1 — Utility System
 
-La première couche détermine quels objectifs l'IA doit poursuivre à un instant donné. Chaque goal est un `MonoBehaviour` exposant une méthode `RatePriority` qui retourne un entier entre 0 et 10.
+The first layer determines which goals the AI should pursue at any given moment. Each goal is a `MonoBehaviour` exposing a `RatePriority` method that returns an integer between 0 and 10.
 
-### Métriques d'entrée
+### Input Metrics
 
-Les fonctions de scoring s'appuient sur plusieurs sources de données :
+The scoring functions draw on several data sources:
 
-- Le `WorldState` courant (bitmask de flags booléens).
-- Le `GameState` qui expose des métriques dérivées du jeu : ratio de HP moyen de l'armée, ratio de build points, compteurs de labs par propriétaire, position de la base ennemie.
-- L'`InfluenceMap` qui fournit la présence militaire autour d'un point donné (valeur positive = dominance alliée, négative = dominance ennemie).
+- The current `WorldState` (a bitmask of boolean flags).
+- The `GameState`, which exposes metrics derived from the game: average army HP ratio, build point ratio, lab counts per owner, enemy base position.
+- The `InfluenceMap`, which provides the military presence around a given point (positive value = allied dominance, negative value = enemy dominance).
 
-### Scoring par AnimationCurve
+### AnimationCurve Scoring
 
-Aucun seuil n'est hardcodé dans le code. Chaque métrique est normalisée en 0–1 puis évaluée par une `AnimationCurve` configurable dans l'Inspector Unity. Les scores issus de plusieurs courbes sont additionnés puis mis à l'échelle sur 0–10.
+No threshold is hardcoded. Each metric is normalized to 0–1, then evaluated by an `AnimationCurve` configurable in the Unity Inspector. The scores from multiple curves are summed, then scaled to 0–10.
 
 ### Goal Queue
 
-Tous les goals dont la priorité est non nulle entrent dans une queue triée par score décroissant. La queue est recalculée à intervalle fixe pour s'adapter à l'évolution du monde.
+All goals with a non-zero priority enter a queue sorted by descending score. The queue is recomputed at a fixed interval to adapt to the evolving state of the world.
 
-L'objectif dans l'implémentation de cette Utility System était d'avoir une première couche de décision ayant accés à un maximum de données de la partie et pouvant mener à des decisions variés et coherentes, sans avoir à ajouter des conditions hardcodés et répetitives. Le scoring des goal est d'autant plus important ici sachant qu'on ne se contente pas de conserver uniquement le prioritaire comme dans un GOAP classique.
+The objective of this Utility System implementation was to have a first decision layer with access to as much game data as possible, capable of producing varied and coherent decisions without having to add repetitive, hardcoded conditions. Goal scoring matters all the more here because, unlike in a classic GOAP, we don't keep only the top-priority goal.
 
-## Couche 2 — GOAP Planner
+## Layer 2 — GOAP Planner
 
-Lorsqu'un goal arrive en tête de queue et que les troupes nécessaires à sa réalisation sont disponibles, le planner GOAP génère un plan d'actions pour la squad assignée.
+When a goal reaches the top of the queue and the troops required to achieve it are available, the GOAP planner generates an action plan for the assigned squad.
 
-Le planner va dicter les actions prises à moyenne échelle (squad), elle permet de distribuer efficacement un plan clair d'action, c'était selon nous le meilleur choix pour un jeu orienté stratégie, ou les agents ia doivent avoir une idée nette des actions à entreprendre pour gagner la partie.
+The planner dictates the actions taken at medium scale (squad level). It allows a clear plan of action to be distributed efficiently, which we felt was the best choice for a strategy-oriented game, where AI agents must have a clear idea of the actions to take in order to win the match.
 
 ### WorldState
 
-L'état du monde est encodé dans un unique bitmask `uint32` de flags booléens.
+The world state is encoded in a single `uint32` bitmask of boolean flags.
 
-La vérification de satisfaction d'un goal se fait par un AND de masques :
+Checking whether a goal is satisfied is done with a mask AND:
 
 ```csharp
 public bool GoalAchieved(WorldState goal)
@@ -62,27 +64,28 @@ public bool GoalAchieved(WorldState goal)
 }
 ```
 
-### Algorithme de recherche
+### Search Algorithm
 
-Le planner utilise une recherche en profondeur forward-chaining. Il énumère tous les plans valides et sélectionne le moins coûteux. L'absence d'heuristique et de mémoïsation est viable car le jeu d'actions est volontairement restreint.
+The planner uses a depth-first forward-chaining search. It enumerates all valid plans and selects the cheapest one. The absence of heuristics and memoization is viable because the action set is deliberately small.
 
-### Actions GOAP
+### GOAP Actions
 
-Chaque action est un `MonoBehaviour` qui déclare un coût, des préconditions (flags requis), des effets (flags produits).
+Each action is a `MonoBehaviour` that declares a cost, preconditions (required flags), and effects (produced flags).
 
-## Couche 3 — FSM tactique
+## Layer 3 — Tactical FSM
 
-Chaque unité dispose de sa propre machine à états finie qui gère son comportement au niveau micro, indépendamment du plan GOAP en cours. La FSM réagit aux événements locaux sans remonter à la couche stratégique.
+Each unit has its own finite state machine that handles its behavior at the micro level, independently of the GOAP plan currently running. The FSM reacts to local events without escalating to the strategic layer.
 
-La FSM fonctionne avec des States, des Conditions et des Transitions, la fsm globale va mettre à jour les états de l'unité si les conditions d'une des transitions d'un état à l'autre sont remplies, permettant ainsi de passer d'un état à un autre état à l'aide de conditions prédéfinies.
+The FSM works with States, Conditions and Transitions: the global FSM updates the unit's state when the conditions of one of the transitions from one state to another are met, allowing it to move from one state to another using predefined conditions.
 
 - FSM
 - FSMState
 - FSMCondition
 - FSMTransition
 
-Chaque Unité possède une variable CurrentOrder et des fonctions assignées à ces états, CurrentOrder est un enum UnitOrder possèdant les valeurs "None, Move, Attack, Repair, Capture" et l'unité possède respectivement les functions OrderMove,OrderAttack ect...
-```
+Each unit has a `CurrentOrder` variable and functions assigned to its states. `CurrentOrder` is a `UnitOrder` enum with the values "None, Move, Attack, Repair, Capture", and the unit has the corresponding functions `OrderMove`, `OrderAttack`, etc.
+
+```csharp
 public enum UnitOrder
 {
     None,
@@ -92,27 +95,27 @@ public enum UnitOrder
     Repair,
 }
 ```
-Ensuite la FSM va réagir à cette ordre et le consommer si jamais elle trouve les conditions nécessaires pour passer d'un état à l'autre.
-On a fait ça pour faire en sorte que l'unité puisse être gérée depuis n'importe quelle source, que ce soit une IA ou un joueur.
 
-On a fait le choix d'utiliser une FSM car elle permet de gérer simplement les actions plus triviales et à l'échelle des agents individuellement, le fait de pouvoir traquer l'état courant des ia en continu est aussi intéressant pour nous.
+The FSM then reacts to this order and consumes it if it finds the conditions required to move from one state to another. We did this so that a unit can be controlled from any source, whether an AI or a player.
 
-## Systèmes transverses
+We chose an FSM because it makes it simple to handle the more trivial actions at the level of individual agents, and being able to continuously track the current state of the AIs is also valuable for us.
+
+## Cross-Cutting Systems
 
 ### Influence Map
 
-L'`InfluenceMap` est une grille 2D où chaque cellule à une influence : positive pour une dominance alliée, négative pour une dominance ennemie. Le `MonoBehaviour` `InfluenceMap` ne calcule rien lui-même, il fusionnent plusieurs `InfluenceSubMap` des `ScriptableObject`, chacune responsable d'une seule source d'information :
+The `InfluenceMap` is a 2D grid where each cell has an influence value: positive for allied dominance, negative for enemy dominance. The `InfluenceMap` `MonoBehaviour` computes nothing itself; it merges several `InfluenceSubMap` `ScriptableObject`s, each responsible for a single source of information:
 
-- `UnitInfluenceSubMap` traque les unités visibles sur le terrain et projette leur influence sur un rayon modifiable autour d'elles, avec une intensité qui décroît avec la distance. Lorsqu'une unité sort du champ de vision, son influence n'est pas retirée d'un coup mais décroît progressivement dans le temps (`decayStartTime`, `decayTime`), plutôt que de "l'oublier" instantanément.
-- `EnemyUnitInfluenceSubMap` hérite de la précédente en ne gardant que les unités adverses, elle est lue directement par certains goals (ex. `DefendBase`) plutôt que fusionnée dans la carte finale.
-- `BuildingInfluenceSubMap` applique la même logique aux bâtiments (`BuildingInfluence`), un bâtiment projette une zone d'influence constante tant qu'il existe.
-- `FogOfWarInfluenceSubMap` ne produit pas d'influence : elle fait le pont avec le `FogOfWarSystem` et fournit les états `IsVisible`/`WasVisible` utilisés par les autres sous-cartes.
-- `InformationStalenessSubmap` ne stocke pas de l'influence mais un numéro de cycle, ce qui permet de savoir depuis combien de mises à jour une cellule n'a pas été rafraîchie (utilisé notamment par le scouting).
+- `UnitInfluenceSubMap` tracks the units visible on the field and projects their influence over an adjustable radius around them, with an intensity that decreases with distance. When a unit leaves the field of view, its influence is not removed all at once but gradually decays over time (`decayStartTime`, `decayTime`), rather than being instantly "forgotten".
+- `EnemyUnitInfluenceSubMap` inherits from the previous one, keeping only enemy units. It is read directly by certain goals (e.g. `DefendBase`) rather than merged into the final map.
+- `BuildingInfluenceSubMap` applies the same logic to buildings (`BuildingInfluence`): a building projects a constant zone of influence for as long as it exists.
+- `FogOfWarInfluenceSubMap` produces no influence: it bridges to the `FogOfWarSystem` and provides the `IsVisible`/`WasVisible` states used by the other submaps.
+- `InformationStalenessSubmap` stores no influence but a cycle number, which makes it possible to know how many updates a cell has gone without being refreshed (used notably by scouting).
 
-À chaque cycle, `InfluenceMap.MergeGrids` additionne cellule par cellule les sous-cartes (en excluant fog, staleness, buildings et la sous-carte ennemie dédiée) pour ne garder dans la carte fusionnée que la présence militaire alliée/ennemie, c'est cette valeur qui est exposée à l'Utility System. Les sous-cartes sont mises à jour sur plusieurs frames (`updateFrequency`, `SetupStaggeredUpdate`) pour répartir le coût CPU plutôt que de tout recalculer sur la même frame.
+On each cycle, `InfluenceMap.MergeGrids` sums the submaps cell by cell (excluding fog, staleness, buildings and the dedicated enemy submap) so that the merged map only retains allied/enemy military presence; this is the value exposed to the Utility System. The submaps are updated over several frames (`updateFrequency`, `SetupStaggeredUpdate`) to spread the CPU cost rather than recomputing everything on the same frame.
 
-L'IA lit ces données via `AIContext.influenceMap`, soit `GetInfluenceAtPosition` pour la dominance globale à un point donné, soit `GetSubMapInfluenceAtPosition<T>` pour interroger une sous-carte précise (par exemple la présence ennemie autour de la base pour prioriser le goal "Defend Base").
+The AI reads this data through `AIContext.influenceMap`, using either `GetInfluenceAtPosition` for the overall dominance at a given point, or `GetSubMapInfluenceAtPosition<T>` to query a specific submap (for example the enemy presence around the base to prioritize the "Defend Base" goal).
 
 ### Formation Manager
 
-Les squads utilisent un `FormationManager` qui calcule une grille rectangulaire orientée dans la direction du mouvement. La direction est recalculée depuis le centre réel du groupe (`GetCenter`) à chaque ordre. Les slots sont distribués selon le `TypeId` des unités . Le pathfinding individuel est délégué aux `NavMeshAgent` de Unity.
+Squads use a `FormationManager` that computes a rectangular grid oriented in the direction of movement. The direction is recomputed from the group's actual center (`GetCenter`) on each order. Slots are distributed according to the units' `TypeId`. Individual pathfinding is delegated to Unity's `NavMeshAgent`s.
